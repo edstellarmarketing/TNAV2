@@ -24,6 +24,118 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Helper: build config HTML download ────────────────────────────────────────
+def _build_config_html(sp: dict, data: dict, m: dict) -> str:
+    """Generate a shareable HTML summary of the confirmed strategy configuration."""
+    conflicts_html = ""
+    for c in sp.get("conflicts", []):
+        sev = c.get("severity", "info")
+        bg  = "#FFEBEE" if sev == "critical" else ("#FFF8E1" if sev == "warning" else "#E3F2FD")
+        border = "#C0392B" if sev == "critical" else ("#F4A024" if sev == "warning" else "#1B3A6B")
+        j = sp.get("justifications", {}).get(c.get("dimension", ""), "")
+        j_html = f'<p style="font-style:italic;margin-top:6px;color:#555">Justification: {j}</p>' if j else ""
+        conflicts_html += f"""
+        <div style="background:{bg};border-left:5px solid {border};border-radius:6px;padding:12px 16px;margin:8px 0;font-size:12px">
+            <strong>{c.get('dimension','')}</strong><br>{c.get('message','')}
+            {j_html}
+        </div>"""
+
+    sliders_html = ""
+    for dim, val in sp["skill_sliders"].items():
+        pct = (val + 3) / 6 * 100
+        color = "#217346" if val > 0 else ("#C0392B" if val < 0 else "#9BA8B8")
+        sign = "+" if val > 0 else ""
+        sliders_html += f"""
+        <div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="font-weight:600">{dim}</span>
+                <span style="font-weight:800;color:{color}">{sign}{val}</span>
+            </div>
+            <div style="background:#E8EDF5;border-radius:4px;height:8px">
+                <div style="background:{color};width:{pct}%;height:8px;border-radius:4px"></div>
+            </div>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Strategy Configuration — {data['company']}</title>
+<style>
+body{{font-family:'Segoe UI',sans-serif;background:#F0F3F8;color:#1A1A2E;margin:0;padding:24px}}
+.wrap{{max-width:900px;margin:0 auto}}
+.header{{background:linear-gradient(135deg,#0F4C2F,#1A7A50);border-radius:12px;padding:28px 36px;color:white;margin-bottom:24px}}
+.h-title{{font-size:26px;font-weight:800;margin-bottom:6px}}
+.h-sub{{font-size:13px;opacity:.7}}
+.h-meta{{display:flex;gap:24px;margin-top:16px;flex-wrap:wrap}}
+.h-meta-item{{font-size:11px;opacity:.6}}
+.h-meta-item strong{{font-size:13px;opacity:1;display:block}}
+.card{{background:white;border-radius:10px;padding:22px 26px;margin-bottom:16px;border:1px solid #E8EDF5}}
+.card-title{{font-size:14px;font-weight:700;color:#1B3A6B;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #E8EDF5}}
+.pill{{display:inline-block;background:#EBF0FA;border:1px solid #C3D0E8;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:#1B3A6B;margin:3px}}
+.summary{{background:#F0FBF4;border:1px solid #C3E6CB;border-left:5px solid #217346;border-radius:8px;padding:14px 18px;font-size:13px;line-height:1.65}}
+.footer{{text-align:center;color:#9BA8B8;font-size:11px;padding:24px;margin-top:16px}}
+.draft-watermark{{background:#FFF8E1;border:2px solid #FFE082;border-radius:8px;padding:12px 18px;text-align:center;font-size:13px;font-weight:700;color:#E67E22;margin-bottom:20px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="header">
+        <div class="h-title">Talent & Capability Strategy Configuration</div>
+        <div class="h-sub">{data['company']} · {data['time_period']} {data['year']}</div>
+        <div class="h-meta">
+            <div class="h-meta-item"><strong>{sp['version']}</strong>Version</div>
+            <div class="h-meta-item"><strong>{sp['created_display']}</strong>Confirmed</div>
+            <div class="h-meta-item"><strong>{sp['confirmed_by']}</strong>Confirmed By</div>
+            <div class="h-meta-item"><strong>{sp['confirmed_role'] or '—'}</strong>Role</div>
+            <div class="h-meta-item"><strong>{sp['time_horizon'].split('(')[0].strip()}</strong>Horizon</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">🎯 Strategic Context Summary</div>
+        <div class="summary">{sp['strategic_summary']}</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">🌟 Cultural & Behavioural Priorities</div>
+        {"".join(f'<span class="pill">{p}</span>' for p in sp['cultural_priorities']) or '<span style="color:#9BA8B8">None selected</span>'}
+    </div>
+
+    <div class="card">
+        <div class="card-title">⚖️ Skills & Competency Emphasis</div>
+        {sliders_html}
+    </div>
+
+    <div class="card">
+        <div class="card-title">🏢 Organisational Focus Areas</div>
+        {"".join(f'<span class="pill">{o}</span>' for o in sp['org_focus']) or '<span style="color:#9BA8B8">All business units</span>'}
+    </div>
+
+    <div class="card">
+        <div class="card-title">👥 Employee Segment Priorities</div>
+        {"".join(f'<span class="pill">{s}</span>' for s in sp['employee_segments']) or '<span style="color:#9BA8B8">All employees</span>'}
+    </div>
+
+    <div class="card">
+        <div class="card-title">⏱️ Time Horizon</div>
+        <strong>{sp['time_horizon']}</strong>
+    </div>
+
+    {'<div class="card"><div class="card-title">⚠️ Strategic Overrides Recorded</div>' + conflicts_html + '</div>' if sp.get('conflicts') else ''}
+
+    <div class="footer">
+        Edstellar LNA Intelligence Platform · Strategy Configuration {sp['version']} · {sp['created_display']}<br>
+        This document is confidential and intended for authorised HR and leadership review only.
+        <br><br>
+        <strong style="color:#217346">✅ CONFIRMED</strong> — This configuration is locked and has been used to generate the LNI/TNI report.
+    </div>
+</div>
+</body>
+</html>"""
+
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div style="font-family:serif;font-size:20px;color:white">EDSTELLAR</div>', unsafe_allow_html=True)
@@ -160,116 +272,6 @@ if "strategy_profile" in st.session_state and not st.session_state.get("strategy
 
     st.stop()
 
-
-# ── Helper: build config HTML download ────────────────────────────────────────
-def _build_config_html(sp: dict, data: dict, m: dict) -> str:
-    """Generate a shareable HTML summary of the confirmed strategy configuration."""
-    conflicts_html = ""
-    for c in sp.get("conflicts", []):
-        sev = c.get("severity", "info")
-        bg  = "#FFEBEE" if sev == "critical" else ("#FFF8E1" if sev == "warning" else "#E3F2FD")
-        border = "#C0392B" if sev == "critical" else ("#F4A024" if sev == "warning" else "#1B3A6B")
-        j = sp.get("justifications", {}).get(c.get("dimension", ""), "")
-        j_html = f'<p style="font-style:italic;margin-top:6px;color:#555">Justification: {j}</p>' if j else ""
-        conflicts_html += f"""
-        <div style="background:{bg};border-left:5px solid {border};border-radius:6px;padding:12px 16px;margin:8px 0;font-size:12px">
-            <strong>{c.get('dimension','')}</strong><br>{c.get('message','')}
-            {j_html}
-        </div>"""
-
-    sliders_html = ""
-    for dim, val in sp["skill_sliders"].items():
-        pct = (val + 3) / 6 * 100
-        color = "#217346" if val > 0 else ("#C0392B" if val < 0 else "#9BA8B8")
-        sign = "+" if val > 0 else ""
-        sliders_html += f"""
-        <div style="margin-bottom:12px">
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                <span style="font-weight:600">{dim}</span>
-                <span style="font-weight:800;color:{color}">{sign}{val}</span>
-            </div>
-            <div style="background:#E8EDF5;border-radius:4px;height:8px">
-                <div style="background:{color};width:{pct}%;height:8px;border-radius:4px"></div>
-            </div>
-        </div>"""
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Strategy Configuration — {data['company']}</title>
-<style>
-body{{font-family:'Segoe UI',sans-serif;background:#F0F3F8;color:#1A1A2E;margin:0;padding:24px}}
-.wrap{{max-width:900px;margin:0 auto}}
-.header{{background:linear-gradient(135deg,#0F4C2F,#1A7A50);border-radius:12px;padding:28px 36px;color:white;margin-bottom:24px}}
-.h-title{{font-size:26px;font-weight:800;margin-bottom:6px}}
-.h-sub{{font-size:13px;opacity:.7}}
-.h-meta{{display:flex;gap:24px;margin-top:16px;flex-wrap:wrap}}
-.h-meta-item{{font-size:11px;opacity:.6}}
-.h-meta-item strong{{font-size:13px;opacity:1;display:block}}
-.card{{background:white;border-radius:10px;padding:22px 26px;margin-bottom:16px;border:1px solid #E8EDF5}}
-.card-title{{font-size:14px;font-weight:700;color:#1B3A6B;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #E8EDF5}}
-.pill{{display:inline-block;background:#EBF0FA;border:1px solid #C3D0E8;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;color:#1B3A6B;margin:3px}}
-.summary{{background:#F0FBF4;border:1px solid #C3E6CB;border-left:5px solid #217346;border-radius:8px;padding:14px 18px;font-size:13px;line-height:1.65}}
-.footer{{text-align:center;color:#9BA8B8;font-size:11px;padding:24px;margin-top:16px}}
-.draft-watermark{{background:#FFF8E1;border:2px solid #FFE082;border-radius:8px;padding:12px 18px;text-align:center;font-size:13px;font-weight:700;color:#E67E22;margin-bottom:20px}}
-</style>
-</head>
-<body>
-<div class="wrap">
-    <div class="header">
-        <div class="h-title">Talent & Capability Strategy Configuration</div>
-        <div class="h-sub">{data['company']} · {data['time_period']} {data['year']}</div>
-        <div class="h-meta">
-            <div class="h-meta-item"><strong>{sp['version']}</strong>Version</div>
-            <div class="h-meta-item"><strong>{sp['created_display']}</strong>Confirmed</div>
-            <div class="h-meta-item"><strong>{sp['confirmed_by']}</strong>Confirmed By</div>
-            <div class="h-meta-item"><strong>{sp['confirmed_role'] or '—'}</strong>Role</div>
-            <div class="h-meta-item"><strong>{sp['time_horizon'].split('(')[0].strip()}</strong>Horizon</div>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-title">🎯 Strategic Context Summary</div>
-        <div class="summary">{sp['strategic_summary']}</div>
-    </div>
-
-    <div class="card">
-        <div class="card-title">🌟 Cultural & Behavioural Priorities</div>
-        {"".join(f'<span class="pill">{p}</span>' for p in sp['cultural_priorities']) or '<span style="color:#9BA8B8">None selected</span>'}
-    </div>
-
-    <div class="card">
-        <div class="card-title">⚖️ Skills & Competency Emphasis</div>
-        {sliders_html}
-    </div>
-
-    <div class="card">
-        <div class="card-title">🏢 Organisational Focus Areas</div>
-        {"".join(f'<span class="pill">{o}</span>' for o in sp['org_focus']) or '<span style="color:#9BA8B8">All business units</span>'}
-    </div>
-
-    <div class="card">
-        <div class="card-title">👥 Employee Segment Priorities</div>
-        {"".join(f'<span class="pill">{s}</span>' for s in sp['employee_segments']) or '<span style="color:#9BA8B8">All employees</span>'}
-    </div>
-
-    <div class="card">
-        <div class="card-title">⏱️ Time Horizon</div>
-        <strong>{sp['time_horizon']}</strong>
-    </div>
-
-    {'<div class="card"><div class="card-title">⚠️ Strategic Overrides Recorded</div>' + conflicts_html + '</div>' if sp.get('conflicts') else ''}
-
-    <div class="footer">
-        Edstellar LNA Intelligence Platform · Strategy Configuration {sp['version']} · {sp['created_display']}<br>
-        This document is confidential and intended for authorised HR and leadership review only.
-        <br><br>
-        <strong style="color:#217346">✅ CONFIRMED</strong> — This configuration is locked and has been used to generate the LNI/TNI report.
-    </div>
-</div>
-</body>
-</html>"""
 
 
 # ── Configuration Form ────────────────────────────────────────────────────────
